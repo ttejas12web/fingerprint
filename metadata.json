@@ -1,0 +1,7 @@
+{
+  "name": "Photoelectric Identity Registry",
+  "description": "A named-user identification registry using platform WebAuthn credentials. The laptop authenticator performs local user verification; the app stores only credential IDs and public keys.",
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
