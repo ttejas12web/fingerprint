@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "fingerprint-db",
-      "preview_database_id": "DB",
+      "database_id": "a2609f3c-45a9-4473-846f-83955f0d7d0b",
       "migrations_dir": "./migrations"
     }
   ],
