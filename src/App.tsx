@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Fingerprint, Shield, ShieldCheck, ShieldAlert, Cpu, Database, LockKeyhole } from 'lucide-react';
 import { startRegistration, startAuthentication, platformAuthenticatorIsAvailable } from '@simplewebauthn/browser';
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+} from '@simplewebauthn/server';
 
 type AuthState = 'idle' | 'scanning' | 'verifying' | 'success' | 'error';
 
@@ -10,6 +14,27 @@ type IdentifiedUser = {
   name: string;
   employeeId: string;
 };
+
+type ApiErrorPayload = { error?: string };
+type VerificationPayload = ApiErrorPayload & {
+  verified?: boolean;
+  user?: IdentifiedUser;
+};
+
+async function readApiJson<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get('Content-Type') ?? '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(
+      `Biometric API unavailable (HTTP ${response.status}). The Cloudflare Worker backend is not active for /api/*.`
+    );
+  }
+
+  const payload = await response.json() as T & ApiErrorPayload;
+  if (!response.ok) {
+    throw new Error(payload.error || `Biometric API request failed (HTTP ${response.status}).`);
+  }
+  return payload;
+}
 
 type WebAuthnFeature = 'publickey-credentials-create' | 'publickey-credentials-get';
 
@@ -77,7 +102,7 @@ export default function App() {
   const refreshUserCount = async () => {
     try {
       const response = await fetch('/api/users');
-      const payload = await response.json();
+      const payload = await readApiJson<{ count?: number }>(response);
       setUserCount(Number(payload.count || 0));
     } catch {
       // The live registry count will refresh after the next successful request.
@@ -151,7 +176,7 @@ export default function App() {
         body: JSON.stringify({ name, employeeId: userId })
       });
       
-      const options = await resp.json();
+      const options = await readApiJson<PublicKeyCredentialCreationOptionsJSON & ApiErrorPayload>(resp);
       if (options.error) throw new Error(options.error);
 
       addLog('[SYS] Awaiting physical biometric interaction...', 'info');
@@ -188,9 +213,9 @@ export default function App() {
         }),
       });
 
-      const verificationJSON = await verificationResp.json();
+      const verificationJSON = await readApiJson<VerificationPayload>(verificationResp);
       
-      if (verificationJSON && verificationJSON.verified) {
+      if (verificationJSON.verified && verificationJSON.user) {
         setAuthState('success');
         setIdentifiedUser(verificationJSON.user);
         triggerHaptic('success');
@@ -235,9 +260,12 @@ export default function App() {
         body: '{}'
       });
       
-      const payload = await resp.json();
+      const payload = await readApiJson<PublicKeyCredentialRequestOptionsJSON & {
+        requestId: string;
+        error?: string;
+      }>(resp);
       if (payload.error) throw new Error(payload.error);
-      const { requestId, ...options } = payload;
+      const { requestId, error: _error, ...options } = payload;
 
       addLog('[SYS] Emitting photon pulse for optical sensor capture...', 'info');
       addLog('[SYS] Awaiting physical biometric interaction...', 'info');
@@ -273,9 +301,9 @@ export default function App() {
         }),
       });
 
-      const verificationJSON = await verificationResp.json();
+      const verificationJSON = await readApiJson<VerificationPayload>(verificationResp);
       
-      if (verificationJSON && verificationJSON.verified) {
+      if (verificationJSON.verified && verificationJSON.user) {
         setAuthState('success');
         setIdentifiedUser(verificationJSON.user);
         triggerHaptic('success');
